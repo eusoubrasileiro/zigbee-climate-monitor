@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Room Climate</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb;
+    --page: #f9f9f7;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --wash: rgba(11, 11, 11, 0.05);
+    --series: #2a78d6;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface: #1a1a19;
+      --page: #0d0d0d;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --wash: rgba(255, 255, 255, 0.07);
+      --series: #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 20px 16px 32px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
+  h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  #status { margin: 0; color: var(--ink-2); display: flex; align-items: baseline; gap: 6px; }
+  #status-icon { font-size: 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
+  .tile, figure { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .tile { padding: 12px 14px; }
+  .tile-label { color: var(--ink-2); font-size: 13px; }
+  .tile-value { font-size: 28px; font-weight: 600; line-height: 1.25; }
+  .tile-sub { color: var(--muted); font-size: 12px; min-height: 17px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+  .filters button {
+    font: inherit; color: var(--ink-2); background: transparent;
+    border: 1px solid transparent; border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  }
+  .filters button:hover { background: var(--wash); }
+  .filters button[aria-pressed="true"] { color: var(--ink); background: var(--surface); border-color: var(--border); font-weight: 600; }
+  #charts { transition: opacity 120ms; }
+  #charts.loading { opacity: 0.55; }
+  figure { margin: 0 0 12px; padding: 12px 14px 8px; }
+  figcaption { display: flex; align-items: baseline; gap: 8px; }
+  figcaption span { color: var(--muted); font-size: 12px; }
+  .plot { position: relative; margin-top: 6px; }
+  .plot svg { display: block; width: 100%; touch-action: pan-y; border-radius: 4px; }
+  .plot svg:focus { outline: 2px solid var(--series); outline-offset: 2px; }
+  .plot text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  .plot text.end-label { font-size: 12px; font-weight: 600; fill: var(--ink); }
+  .plot text.empty { font-size: 13px; fill: var(--ink-2); }
+  .tooltip {
+    position: absolute; top: 4px; pointer-events: none; white-space: nowrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); padding: 6px 10px; font-size: 12px; color: var(--ink-2);
+  }
+  .tooltip strong { color: var(--ink); font-size: 14px; }
+  .tooltip i { display: inline-block; width: 12px; height: 2px; border-radius: 1px; background: var(--series); vertical-align: middle; margin-right: 6px; }
+  details { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .table-wrap { overflow-x: auto; margin-top: 8px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 4px 10px 4px 0; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--ink-2); font-weight: 600; }
+  caption { text-align: left; color: var(--muted); font-size: 12px; padding-bottom: 4px; }
+  footer { margin-top: 14px; color: var(--ink-2); font-size: 13px; }
+  footer p { margin: 0 0 4px; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="name">Room climate</h1>
+    <p id="status" role="status"><span id="status-icon" aria-hidden="true"></span><span id="status-text">Loading…</span></p>
+  </header>
+
+  <section class="tiles" aria-label="Latest values">
+    <div class="tile"><div class="tile-label">Temperature</div><div class="tile-value" id="tile-temperature">–</div></div>
+    <div class="tile"><div class="tile-label">Humidity</div><div class="tile-value" id="tile-humidity">–</div></div>
+    <div class="tile"><div class="tile-label">Battery</div><div class="tile-value" id="tile-battery">–</div></div>
+    <div class="tile"><div class="tile-label">Last reading</div><div class="tile-value" id="tile-age">–</div><div class="tile-sub" id="tile-time"></div></div>
+  </section>
+
+  <div class="filters" id="ranges" role="group" aria-label="Time range"></div>
+  <div id="charts"></div>
+
+  <details id="table-view">
+    <summary>Table view</summary>
+    <div class="table-wrap">
+      <table>
+        <caption id="table-caption"></caption>
+        <thead><tr><th scope="col">Time</th><th scope="col">Temperature (°C)</th><th scope="col">Humidity (%)</th><th scope="col">Battery (%)</th><th scope="col">Signal (LQI)</th></tr></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </details>
+
+  <footer>
+    <p>This page checks for new data every 5 seconds. The sensor sends readings on its own schedule, so new points appear less often.</p>
+    <p><a href="/readings.csv">Download all readings (CSV)</a></p>
+  </footer>
+</main>
+
+<script>
+const RANGES = [
+  { label: '1 h', hours: 1 },
+  { label: '6 h', hours: 6 },
+  { label: '24 h', hours: 24 },
+  { label: '7 d', hours: 168 },
+  { label: '30 d', hours: 720 },
+];
+const CHARTS = [
+  { key: 'temperature', column: 1, title: 'Temperature', unit: '°C', digits: 1, minSpan: 2 },
+  { key: 'humidity', column: 2, title: 'Humidity', unit: '%', digits: 1, minSpan: 10, limits: [0, 100] },
+];
+const MINUTE = 60e3;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+const POLL_MS = 5000;
+const REQUEST_TIMEOUT_MS = 4500;
+const STALE_MS = 3 * HOUR;
+const GAP_MS = 6 * HOUR;
+const MIN_DOMAIN_MS = 5 * MINUTE;
+const TICK_STEPS = [MINUTE, 2 * MINUTE, 5 * MINUTE, 10 * MINUTE, 15 * MINUTE, 30 * MINUTE, HOUR, 2 * HOUR,
+  3 * HOUR, 6 * HOUR, 12 * HOUR, DAY, 2 * DAY, 7 * DAY];
+const MARGIN = { top: 10, right: 62, bottom: 24, left: 40 };
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+const $ = (id) => document.getElementById(id);
+const state = { hours: loadRange(), data: null, hoverT: null, requestId: 0 };
+
+function loadRange() {
+  try {
+    const saved = Number(localStorage.getItem('range-hours'));
+    if (RANGES.some((r) => r.hours === saved)) return saved;
+  } catch {}
+  return 24;
+}
+
+function saveRange(hours) {
+  try { localStorage.setItem('range-hours', String(hours)); } catch {}
+}
+
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+function svgEl(tag, attrs, text) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function dot(cx, cy) {
+  return svgEl('circle', { cx, cy, r: 4, fill: 'var(--series)', stroke: 'var(--surface)', 'stroke-width': 2 });
+}
+
+function formatClock(t, withSeconds = true) {
+  const options = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+  if (withSeconds) options.second = '2-digit';
+  return new Date(t).toLocaleTimeString([], options);
+}
+
+function formatDay(t) {
+  return new Date(t).toLocaleDateString([], { day: '2-digit', month: 'short' });
+}
+
+function formatStamp(t) {
+  return `${formatDay(t)}, ${formatClock(t)}`;
+}
+
+function formatAge(ms) {
+  if (ms < MINUTE) return 'just now';
+  if (ms < HOUR) return `${Math.floor(ms / MINUTE)} min ago`;
+  if (ms < DAY) return `${Math.floor(ms / HOUR)} h ago`;
+  return `${Math.floor(ms / DAY)} d ago`;
+}
+
+function formatValue(value, digits, unit) {
+  return value === null || value === undefined ? '–' : `${value.toFixed(digits)} ${unit}`;
+}
+
+// ---- Status and tiles ----
+
+function currentProblem(error) {
+  if (error) return { color: 'var(--critical)', text: "Can't reach the server. Showing the last data received." };
+  const { mqtt_connected, latest, now } = state.data;
+  if (!mqtt_connected) return { color: 'var(--critical)', text: 'Not recording: lost the connection to the MQTT broker' };
+  if (!latest) return { color: 'var(--warning)', text: 'Waiting for the first reading' };
+  if (now - latest.t > STALE_MS) {
+    return { color: 'var(--warning)', text: `No reading for ${formatAge(now - latest.t).replace(' ago', '')}. Check the sensor.` };
+  }
+  return null;
+}
+
+function renderStatus(error) {
+  const problem = currentProblem(error);
+  $('status-icon').style.color = problem ? problem.color : 'var(--good)';
+  setText($('status-icon'), problem ? '▲' : '●');
+  setText($('status-text'), problem ? problem.text : 'Recording');
+}
+
+function renderTiles() {
+  const { latest, now } = state.data;
+  setText($('name'), state.data.name);
+  setText($('tile-temperature'), formatValue(latest?.temperature, 1, '°C'));
+  setText($('tile-humidity'), formatValue(latest?.humidity, 1, '%'));
+  setText($('tile-battery'), formatValue(latest?.battery, 0, '%'));
+  setText($('tile-age'), latest ? formatAge(now - latest.t) : '–');
+  setText($('tile-time'), latest ? formatStamp(latest.t) : '');
+}
+
+// ---- Charts ----
+
+function buildCharts() {
+  for (const cfg of CHARTS) {
+    const fig = document.createElement('figure');
+    const caption = document.createElement('figcaption');
+    const title = document.createElement('h2');
+    title.textContent = cfg.title;
+    const unit = document.createElement('span');
+    unit.textContent = cfg.unit;
+    caption.append(title, unit);
+    const plot = document.createElement('div');
+    plot.className = 'plot';
+    const svg = svgEl('svg', { tabindex: '0', role: 'img', 'aria-label': cfg.title });
+    const tooltip = document.createElement('div');
+    tooltip.className = 'tooltip';
+    tooltip.hidden = true;
+    plot.append(svg, tooltip);
+    fig.append(caption, plot);
+    $('charts').append(fig);
+    cfg.plot = plot;
+    cfg.svg = svg;
+    cfg.tooltip = tooltip;
+
+    svg.addEventListener('pointermove', (event) => {
+      const box = svg.getBoundingClientRect();
+      if (!cfg.xToTime) return;
+      setHover(cfg.xToTime(event.clientX - box.left));
+    });
+    svg.addEventListener('pointerleave', () => setHover(null));
+    svg.addEventListener('focus', () => {
+      if (cfg.points && cfg.points.length) setHover(cfg.points[cfg.points.length - 1].t);
+    });
+    svg.addEventListener('blur', () => setHover(null));
+    svg.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (!cfg.points || !cfg.points.length || state.hoverT === null) return;
+      event.preventDefault();
+      const here = nearestIndex(cfg.points, state.hoverT);
+      const next = Math.min(cfg.points.length - 1, Math.max(0, here + (event.key === 'ArrowRight' ? 1 : -1)));
+      setHover(cfg.points[next].t);
+    });
+  }
+}
+
+function niceStep(span, count) {
+  const raw = span / count;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const ratio = raw / magnitude;
+  return [1, 2, 5, 10].find((nice) => ratio <= nice) * magnitude;
+}
+
+function yScale(values, cfg) {
+  let low = Math.min(...values);
+  let high = Math.max(...values);
+  if (high - low < cfg.minSpan) {
+    const middle = (low + high) / 2;
+    low = middle - cfg.minSpan / 2;
+    high = middle + cfg.minSpan / 2;
+  }
+  const step = niceStep(high - low, 4);
+  low = Math.floor(low / step) * step;
+  high = Math.ceil(high / step) * step;
+  if (cfg.limits) {
+    low = Math.max(low, cfg.limits[0]);
+    high = Math.min(high, cfg.limits[1]);
+  }
+  const ticks = [];
+  for (let v = low; v <= high + step / 1000; v += step) ticks.push(v);
+  return { low, high, ticks, decimals: step < 1 ? 1 : 0 };
+}
+
+function timeTicks(start, end, width) {
+  const span = end - start;
+  const maxTicks = Math.max(2, Math.floor(width / 80));
+  const step = TICK_STEPS.find((s) => span / s <= maxTicks) || TICK_STEPS[TICK_STEPS.length - 1];
+  const offset = new Date(end).getTimezoneOffset() * MINUTE;
+  const ticks = [];
+  for (let t = Math.ceil((start - offset) / step) * step + offset; t <= end; t += step) {
+    const isMidnight = (t - offset) % DAY === 0;
+    ticks.push({ t, label: step >= DAY || isMidnight ? formatDay(t) : formatClock(t, false) });
+  }
+  return ticks;
+}
+
+function nearestIndex(points, t) {
+  let best = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (Math.abs(points[i].t - t) < Math.abs(points[best].t - t)) best = i;
+  }
+  return best;
+}
+
+function drawChart(cfg, data) {
+  const width = cfg.plot.clientWidth;
+  const height = width < 520 ? 180 : 220;
+  const svg = cfg.svg;
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('height', height);
+  svg.replaceChildren();
+
+  const points = data.points
+    .filter((row) => row[cfg.column] !== null)
+    .map((row) => ({ t: row[0], value: row[cfg.column], n: row[3] }));
+  cfg.points = points;
+  cfg.xToTime = null;
+
+  if (!points.length) {
+    svg.setAttribute('aria-label', `${cfg.title}: no readings in this period`);
+    svg.append(svgEl('text', { class: 'empty', x: width / 2, y: height / 2, 'text-anchor': 'middle' }, 'No readings in this period'));
+    return;
+  }
+
+  const plotWidth = width - MARGIN.left - MARGIN.right;
+  const plotHeight = height - MARGIN.top - MARGIN.bottom;
+  const rangeStart = data.now - state.hours * HOUR;
+  const start = Math.max(rangeStart, Math.min(points[0].t, data.now - MIN_DOMAIN_MS));
+  const end = data.now;
+  const x = (t) => MARGIN.left + ((t - start) / (end - start)) * plotWidth;
+  cfg.xToTime = (px) => start + ((px - MARGIN.left) / plotWidth) * (end - start);
+  const scale = yScale(points.map((p) => p.value), cfg);
+  const y = (v) => MARGIN.top + (1 - (v - scale.low) / (scale.high - scale.low)) * plotHeight;
+  cfg.x = x;
+  cfg.y = y;
+  cfg.plotHeight = plotHeight;
+
+  for (const tick of scale.ticks) {
+    const py = y(tick);
+    svg.append(svgEl('line', { x1: MARGIN.left, x2: width - MARGIN.right, y1: py, y2: py, stroke: tick === scale.low ? 'var(--axis)' : 'var(--grid)', 'stroke-width': 1 }));
+    svg.append(svgEl('text', { x: MARGIN.left - 6, y: py + 4, 'text-anchor': 'end' }, tick.toFixed(scale.decimals)));
+  }
+  for (const tick of timeTicks(start, end, plotWidth)) {
+    svg.append(svgEl('text', { x: x(tick.t), y: height - 6, 'text-anchor': 'middle' }, tick.label));
+  }
+
+  // A long silence breaks the line rather than implying a trend across it.
+  let path = '';
+  points.forEach((p, i) => {
+    const move = i === 0 || p.t - points[i - 1].t > GAP_MS;
+    path += `${move ? 'M' : 'L'}${x(p.t).toFixed(1)} ${y(p.value).toFixed(1)}`;
+  });
+  svg.append(svgEl('path', { d: path, fill: 'none', stroke: 'var(--series)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+
+  // Show every reading as a dot while they are sparse enough to tell apart.
+  if (points.length <= plotWidth / 14) {
+    for (const p of points) svg.append(dot(x(p.t), y(p.value)));
+  }
+  const last = points[points.length - 1];
+  svg.append(dot(x(last.t), y(last.value)));
+  svg.append(svgEl('text', { class: 'end-label', x: x(last.t) + 9, y: y(last.value) + 4 }, formatValue(last.value, cfg.digits, cfg.unit)));
+  svg.setAttribute('aria-label', `${cfg.title}: latest ${formatValue(last.value, cfg.digits, cfg.unit)}. Use the left and right arrow keys to step through readings.`);
+
+  cfg.hoverLayer = svgEl('g', {});
+  svg.append(cfg.hoverLayer);
+}
+
+function drawHover(cfg) {
+  const { tooltip, points } = cfg;
+  if (cfg.hoverLayer) cfg.hoverLayer.replaceChildren();
+  if (state.hoverT === null || !points || !points.length || !cfg.xToTime) {
+    tooltip.hidden = true;
+    return;
+  }
+  const point = points[nearestIndex(points, state.hoverT)];
+  const px = cfg.x(point.t);
+  const py = cfg.y(point.value);
+  cfg.hoverLayer.append(svgEl('line', { x1: px, x2: px, y1: MARGIN.top, y2: MARGIN.top + cfg.plotHeight, stroke: 'var(--axis)', 'stroke-width': 1 }));
+  cfg.hoverLayer.append(dot(px, py));
+
+  const key = document.createElement('i');
+  const value = document.createElement('strong');
+  value.textContent = formatValue(point.value, cfg.digits, cfg.unit);
+  const when = document.createElement('div');
+  when.textContent = point.n > 1 ? `${formatStamp(point.t)}, average of ${point.n}` : formatStamp(point.t);
+  tooltip.replaceChildren(key, value, when);
+  tooltip.hidden = false;
+  const room = cfg.plot.clientWidth - tooltip.offsetWidth - 4;
+  tooltip.style.left = `${Math.max(0, px + 12 > room ? px - 12 - tooltip.offsetWidth : px + 12)}px`;
+}
+
+function setHover(t) {
+  state.hoverT = t;
+  CHARTS.forEach(drawHover);
+}
+
+function renderCharts() {
+  if (!state.data) return;
+  for (const cfg of CHARTS) {
+    drawChart(cfg, state.data);
+    drawHover(cfg);
+  }
+}
+
+// ---- Table view ----
+
+function renderTable() {
+  const rows = state.data.rows;
+  if (!rows) return;
+  const body = $('table-body');
+  body.replaceChildren(...rows.map((row) => {
+    const tr = document.createElement('tr');
+    const cells = [formatStamp(row.t), row.temperature, row.humidity, row.battery, row.linkquality];
+    for (const cell of cells) {
+      const td = document.createElement('td');
+      td.textContent = cell === null ? '–' : String(cell);
+      tr.append(td);
+    }
+    return tr;
+  }));
+  setText($('table-caption'), rows.length === state.data.count
+    ? `${rows.length} readings in this period, newest first`
+    : `Newest ${rows.length} of ${state.data.count} readings in this period`);
+}
+
+// ---- Data ----
+
+async function refresh() {
+  const id = ++state.requestId;
+  const table = $('table-view').open ? '&table=1' : '';
+  try {
+    const response = await fetch(`/api/readings?hours=${state.hours}${table}`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (id !== state.requestId) return;
+    state.data = data;
+    renderStatus(false);
+    renderTiles();
+    renderCharts();
+    renderTable();
+  } catch (error) {
+    if (id === state.requestId) renderStatus(true);
+  } finally {
+    if (id === state.requestId) $('charts').classList.remove('loading');
+  }
+}
+
+function buildRanges() {
+  for (const range of RANGES) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = range.label;
+    button.setAttribute('aria-pressed', String(range.hours === state.hours));
+    button.addEventListener('click', () => {
+      state.hours = range.hours;
+      saveRange(range.hours);
+      for (const b of $('ranges').children) b.setAttribute('aria-pressed', String(b === button));
+      $('charts').classList.add('loading');
+      refresh();
+    });
+    $('ranges').append(button);
+  }
+}
+
+buildRanges();
+buildCharts();
+$('table-view').addEventListener('toggle', refresh);
+new ResizeObserver(renderCharts).observe($('charts'));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+setInterval(() => { if (!document.hidden) refresh(); }, POLL_MS);
+refresh();
+</script>
+</body>
+</html>

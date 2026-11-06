@@ -1,0 +1,56 @@
+services:
+  mosquitto:
+    container_name: mosquitto
+    image: eclipse-mosquitto:2.1.2-alpine
+    restart: unless-stopped
+    user: "1000:1000"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - ./mosquitto/data:/mosquitto/data
+    ports:
+      # Localhost only: Docker-published ports bypass UFW.
+      - 127.0.0.1:1883:1883
+
+  zigbee2mqtt:
+    container_name: zigbee2mqtt
+    image: ghcr.io/koenkk/zigbee2mqtt:2.14.3
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    user: "1000:1000"
+    group_add:
+      - dialout
+    volumes:
+      - ./z2m-data:/app/data
+      - /run/udev:/run/udev:ro
+    ports:
+      # Web UI, no login: keep on localhost.
+      - 127.0.0.1:8080:8080
+    environment:
+      - TZ=${TZ:-UTC}
+    devices:
+      - ${ZIGBEE_SERIAL_PORT:?Set ZIGBEE_SERIAL_PORT in .env}:/dev/ttyUSB0
+
+  dashboard:
+    container_name: sensor-dashboard
+    build: ./dashboard
+    image: sensor-dashboard:local
+    init: true
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./dashboard/data:/data
+    environment:
+      - SENSOR_TOPIC=${SENSOR_TOPIC:?Set SENSOR_TOPIC in .env}
+      - SENSOR_NAME=${SENSOR_NAME:-Sensor}
+    ports:
+      # Read-only page, open to the LAN on purpose. IPv4 only so a public
+      # IPv6 address on this PC can't expose it past the router's NAT.
+      - 0.0.0.0:8090:8090

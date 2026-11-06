@@ -1,0 +1,10 @@
+# Local settings
+.env
+
+# Runtime data. z2m-data/ holds the Zigbee network key and must stay private.
+z2m-data/
+mosquitto/data/
+dashboard/data/
+
+__pycache__/
+*.pyc

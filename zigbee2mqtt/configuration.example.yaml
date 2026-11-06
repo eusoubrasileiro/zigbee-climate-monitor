@@ -1,0 +1,26 @@
+# Copy to z2m-data/configuration.yaml. On first start Zigbee2MQTT replaces each
+# GENERATE with a random value, which makes the copy a secret: it holds the
+# network key. Never commit it.
+version: 5
+homeassistant:
+  enabled: false
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://mosquitto:1883
+serial:
+  port: /dev/ttyUSB0
+  # For Silicon Labs EFR32 sticks such as the Dongle Plus-E. See the Zigbee2MQTT
+  # docs for other radios.
+  adapter: ember
+  baudrate: 115200
+  rtscts: false
+advanced:
+  # Pick a channel away from your Wi-Fi. Changing it later means re-pairing
+  # every device.
+  channel: 11
+  network_key: GENERATE
+  pan_id: GENERATE
+  ext_pan_id: GENERATE
+frontend:
+  enabled: true
+  port: 8080

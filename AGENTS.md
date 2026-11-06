@@ -44,10 +44,24 @@ This sensor **can't be polled**: an MQTT `/get` fails with `No converter availab
 It exposes no writable settings, so its report interval can't be changed. The page
 refreshes every 5 seconds, but readings arrive only when the sensor sends them.
 
-Zigbee2MQTT set up no bindings or reporting for it, so the report schedule is the
-sensor's own. **It reports about once an hour**, always near the same minute: 17
-reports in a row with none missed on 2026-11-06, from 01:21 to 17:21. Two extra reports
-came on the first night, at 22:48 and 23:51, and their cause is unknown.
+**It reports about once an hour**, and that can't be changed from here. 17 reports came
+in a row with none missed on 2026-11-06, from 01:21 to 17:21. It seems to report more
+often for about two hours after pairing or a restart, and the hourly schedule then
+counts from that moment:
+
+- After pairing at 22:21 on 2026-11-05: 22:48, 23:21, 23:51, 00:21, then hourly.
+- After a restart at 19:15 on 2026-11-06: 19:17, 19:44, 19:45, 20:15. Whether it then
+  settles wasn't checked, and the cause of the restart is unknown.
+
+**A 15-minute interval didn't work.** On 2026-11-06 the sensor accepted
+`bridge/request/device/reporting/configure` for temperature and humidity, with minimum
+and maximum both 900 seconds, but no report came at 18:36, 18:51 or 19:06. Zigbee2MQTT
+still lists those settings, so they aren't proof of the real schedule. Zigbee2MQTT's
+firmware update index has nothing for this sensor, and the pvvx ZigbeeTLc custom firmware
+README doesn't list it.
+
+It seems to accept commands only just after sending a report. That request got through
+because it was sent the moment a report arrived.
 
 The LCD appears to update only on that cycle too. After about 30 minutes in a 5 °C
 fridge it still showed about 30 °C, the last value reported. So a frozen screen or an

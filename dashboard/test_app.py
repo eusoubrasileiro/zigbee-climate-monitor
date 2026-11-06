@@ -10,6 +10,7 @@ import urllib.request
 from contextlib import closing
 from http.server import ThreadingHTTPServer
 from types import SimpleNamespace
+from unittest.mock import patch
 
 _tmp = tempfile.TemporaryDirectory()
 os.environ["DB_PATH"] = os.path.join(_tmp.name, "test.db")
@@ -20,6 +21,11 @@ import app  # noqa: E402
 
 def message(payload):
     return SimpleNamespace(payload=payload)
+
+
+def deliver(payload, at):
+    with patch("app.time.time", return_value=at):
+        app.on_message(None, None, message(payload))
 
 
 def stored_rows():
@@ -35,6 +41,7 @@ class AppTestCase(unittest.TestCase):
             db.executescript(app.SCHEMA)
             db.execute("DELETE FROM readings")
         app.last_row = None
+        app.open_report = None
 
 
 class ParseReadingTests(unittest.TestCase):
@@ -74,10 +81,24 @@ class RecorderTests(AppTestCase):
             app.on_message(None, None, message(b'{"temperature":25.5,"humidity":60}'))
         self.assertEqual(len(stored_rows()), 1)
 
-    def test_stores_a_changed_reading(self):
-        app.on_message(None, None, message(b'{"temperature":25.5,"humidity":60}'))
-        app.on_message(None, None, message(b'{"temperature":25.6,"humidity":60}'))
+    def test_a_later_report_gets_its_own_row(self):
+        deliver(b'{"temperature":25.5,"humidity":60}', at=1000.0)
+        deliver(b'{"temperature":25.6,"humidity":60}', at=1000.0 + app.REPORT_WINDOW_MS / 1000)
         self.assertEqual(len(stored_rows()), 2)
+
+    def test_merges_the_messages_of_one_report(self):
+        # The messages of a real report: new battery first, then each new value.
+        deliver(b'{"temperature":30.3,"humidity":59.33,"battery":63,"linkquality":144}', at=1000.0)
+        deliver(b'{"temperature":5.24,"humidity":59.33,"battery":63,"linkquality":144}', at=1000.4)
+        deliver(b'{"temperature":5.24,"humidity":42.25,"battery":63,"linkquality":144}', at=1000.5)
+        self.assertEqual(stored_rows(), [(5.24, 42.25, 63.0, 144)])
+        with closing(app.connect()) as db:
+            self.assertEqual(db.execute("SELECT ts FROM readings").fetchone()[0], 1_000_000)
+
+    def test_a_partial_message_keeps_the_values_already_stored(self):
+        deliver(b'{"temperature":25.5,"humidity":60}', at=1000.0)
+        deliver(b'{"humidity":61}', at=1000.1)
+        self.assertEqual(stored_rows(), [(25.5, 61.0, None, None)])
 
     def test_ignores_junk(self):
         app.on_message(None, None, message(b"not json"))

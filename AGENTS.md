@@ -166,12 +166,6 @@ Set it back to `info` after debugging.
 **Mosquitto's image tags.** The 2.1 series is tagged with a suffix, like
 `2.1.2-alpine`. There's no plain `2.1.2`.
 
-**One report is stored as two or three rows.** Zigbee2MQTT publishes once per changed
-value, and the recorder stores each message. Some rows therefore pair a new value with
-one from the previous report, up to an hour old. For example, 30.3 °C was stored at
-17:21:36 on 2026-11-06, one second before that report's real 5.24 °C. Keep this in mind
-when reading the CSV.
-
 ## Rules for changes
 
 - Never commit `.env`, `z2m-data/`, `mosquitto/data/` or `dashboard/data/`. The

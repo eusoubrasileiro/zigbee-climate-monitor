@@ -29,6 +29,8 @@ MAX_TABLE_ROWS = 200
 FIELDS = ("temperature", "humidity", "battery", "linkquality")
 FIELD_COLUMNS = ", ".join(FIELDS)
 COLUMNS = f"ts, {FIELD_COLUMNS}"
+MERGE_ASSIGNMENTS = ", ".join(f"{f} = COALESCE(?, {f})" for f in FIELDS)
+REPORT_WINDOW_MS = 5000
 INDEX_HTML = (Path(__file__).parent / "index.html").read_bytes()
 
 SCHEMA = """
@@ -45,6 +47,7 @@ CREATE INDEX IF NOT EXISTS readings_ts ON readings (ts);
 log = logging.getLogger("dashboard")
 mqtt_connected = False
 last_row = None
+open_report = None  # (rowid, ts) of the row the current report's messages merge into
 
 
 def connect():
@@ -80,17 +83,26 @@ def on_disconnect(_client, _userdata, _flags, reason_code, _properties):
 
 
 def on_message(_client, _userdata, msg):
-    global last_row
+    global last_row, open_report
     row = parse_reading(msg.payload)
     # Zigbee2MQTT republishes its cached state on restart; that is not a new reading.
     if row is None or row == last_row:
         return
+    now = int(time.time() * 1000)
     try:
         with closing(connect()) as db, db:
-            db.execute(
-                f"INSERT INTO readings ({COLUMNS}) VALUES (?, ?, ?, ?, ?)",
-                (int(time.time() * 1000),) + row,
-            )
+            # Zigbee2MQTT publishes once per changed value, so one report arrives as
+            # several messages, and only the last one holds all of its new values.
+            if open_report and now - open_report[1] < REPORT_WINDOW_MS:
+                db.execute(
+                    f"UPDATE readings SET {MERGE_ASSIGNMENTS} WHERE rowid = ?",
+                    row + (open_report[0],),
+                )
+            else:
+                cursor = db.execute(
+                    f"INSERT INTO readings ({COLUMNS}) VALUES (?, ?, ?, ?, ?)", (now,) + row
+                )
+                open_report = (cursor.lastrowid, now)
         last_row = row
     except sqlite3.Error:
         log.exception("could not store reading")

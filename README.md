@@ -41,7 +41,7 @@ Tested with a Dongle Plus-E stick and a Tuya TS0201 sensor. See
 > [Moving to another machine](AGENTS.md#moving-to-another-machine) first.
 
 ```bash
-git clone https://github.com/eusoubrasileiro/zigbee-climate-monitor.git
+gh repo clone eusoubrasileiro/zigbee-climate-monitor
 cd zigbee-climate-monitor
 
 # Create the folders first, so Docker doesn't create them owned by root

@@ -44,6 +44,20 @@ This sensor **can't be polled**: an MQTT `/get` fails with `No converter availab
 It exposes no writable settings, so its report interval can't be changed. The page
 refreshes every 5 seconds, but readings arrive only when the sensor sends them.
 
+Zigbee2MQTT set up no bindings or reporting for it, so the report schedule is the
+sensor's own. **It reports about once an hour**, always near the same minute: 17
+reports in a row with none missed on 2026-11-06, from 01:21 to 17:21. Two extra reports
+came on the first night, at 22:48 and 23:51, and their cause is unknown.
+
+The LCD appears to update only on that cycle too. After about 30 minutes in a 5 °C
+fridge it still showed about 30 °C, the last value reported. So a frozen screen or an
+hour without data is normal, and it's no reason to press the pinhole or pair again.
+Suspect a lost link only after two missed reports. The page warns after 3 hours.
+
+A raw `read` sent through `/set` failed with `Delivery failed` 22 minutes after a report,
+so a failed read doesn't prove the sensor is gone. Reports do get out of the owner's
+fridge, with link quality 144 in the one report checked, compared with 255 outside it.
+
 The IEEE address survives re-pairing, so the MQTT topic stays the same.
 
 ### Other environment details
@@ -120,7 +134,8 @@ docker exec mosquitto mosquitto_sub -C 1 -W 5 -t zigbee2mqtt/bridge/devices | py
 **First start erases any network on the stick.** With `GENERATE` in the config,
 Zigbee2MQTT logs `Adapter network does not match config. Leaving network...` and
 replaces what's there. This happened at the first install, when a network was already
-running on the stick and no backup existed. Before a first start, ask the owner
+running on the stick and no backup existed. The owner later confirmed nothing had been
+paired through the stick, so nothing was lost. Before a first start, ask the owner
 whether the stick has paired devices. If it may, don't start until they answer.
 
 **A paired sensor keeps dropping off.** The sensor left three times during the first
@@ -150,6 +165,12 @@ Set it back to `info` after debugging.
 
 **Mosquitto's image tags.** The 2.1 series is tagged with a suffix, like
 `2.1.2-alpine`. There's no plain `2.1.2`.
+
+**One report is stored as two or three rows.** Zigbee2MQTT publishes once per changed
+value, and the recorder stores each message. Some rows therefore pair a new value with
+one from the previous report, up to an hour old. For example, 30.3 °C was stored at
+17:21:36 on 2026-11-06, one second before that report's real 5.24 °C. Keep this in mind
+when reading the CSV.
 
 ## Rules for changes
 

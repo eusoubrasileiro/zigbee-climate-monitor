@@ -41,7 +41,7 @@ Tested with a Dongle Plus-E stick and a Tuya TS0201 sensor. See
 > [Moving to another machine](AGENTS.md#moving-to-another-machine) first.
 
 ```bash
-gh repo clone eusoubrasileiro/zigbee-climate-monitor
+git clone https://github.com/eusoubrasileiro/zigbee-climate-monitor.git
 cd zigbee-climate-monitor
 
 # Create the folders first, so Docker doesn't create them owned by root
@@ -82,7 +82,8 @@ Open `http://<this-machine's-LAN-IP>:8090` on any device on your network. Find t
 IP with `hostname -I`. A DHCP reservation on your router keeps it from changing.
 
 The page checks for new data every 5 seconds, but battery sensors decide for
-themselves when to report, so new points may appear much less often.
+themselves when to report. The tested sensor reports about once an hour, and its
+own screen appears to update only then too.
 
 The Zigbee2MQTT admin UI is at http://127.0.0.1:8080, on this machine only.
 
